@@ -1,0 +1,210 @@
+#define BLYNK_PRINT Serial
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+#include <TimeLib.h>
+#include <WidgetRTC.h>
+#include <Blynk.h>
+#include<DallasTemperature.h>
+#include <OneWire.h>
+
+BlynkTimer timer;
+#define ONE_WIRE_BUS 2 // DS18B20 on arduino pin2 corresponds to D4 on physical board
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature DS18B20(&oneWire);
+float temp;
+int relay1State = LOW;
+int relay2State = LOW;
+int selectMode;
+int LED1 = LOW;
+int BUZZER = LOW;
+
+#define AUTH ""
+#define WIFI_SSID ""
+#define WIFI_PASS ""
+#define SERVER "blynk-cloud.com "
+
+// Comment-out if use Blynk hosted cloud service
+#define PORT 8442
+
+
+#define RELAY_PIN_1      5
+#define RELAY_PIN_2      4
+#define VPIN_BUTTON_1    V1
+#define VPIN_BUTTON_10    V10
+#define VPIN_BUTTON_11    V11
+#define LED1 13
+#define BUZZER 15
+long startsecondswd;
+long stopsecondswd;
+long nowseconds;
+WidgetRTC rtc;
+BLYNK_CONNECTED() {
+
+  // Request the latest state from the server
+
+  Blynk.syncVirtual(VPIN_BUTTON_1);
+  
+}
+
+
+
+BLYNK_WRITE(VPIN_BUTTON_1)
+ {
+  selectMode = param.asInt();
+  activetoday;
+ }
+
+void checkBlynk() { // called every 3 seconds by SimpleTimer
+  bool isconnected = Blynk.connected();
+  if (isconnected == false) {
+    digitalWrite(LED1, LOW);
+    delay(15000);
+   ESP.restart();
+  }
+
+  if (isconnected == true) {
+    digitalWrite(LED1, HIGH);
+    
+  }
+}
+
+
+
+void activetoday()
+{
+ if ((selectMode == 1) && (year() != 1970))
+ { 
+  Serial.print("Časovač:");
+  Serial.println("ON");
+  Blynk.syncVirtual(VPIN_BUTTON_10);
+  Blynk.syncVirtual(VPIN_BUTTON_11);
+ }
+ else  {
+  Serial.print("Časovač:");
+  Serial.println("OFF");
+  digitalWrite (RELAY_PIN_1, LOW);
+  digitalWrite (RELAY_PIN_2, LOW);
+ }
+}
+
+BLYNK_WRITE(VPIN_BUTTON_10) {
+  TimeInputParam t(param);
+
+  nowseconds = ((hour() * 3600) + (minute() * 60) + second());
+  startsecondswd = (t.getStartHour() * 3600) + (t.getStartMinute() * 60);
+  //Serial.println(startsecondswd);  // used for debugging
+  if (nowseconds >= startsecondswd) {
+
+    if (nowseconds <= startsecondswd + 90) {  
+      digitalWrite (RELAY_PIN_1, HIGH);
+        }
+  }
+
+  stopsecondswd = (t.getStopHour() * 3600) + (t.getStopMinute() * 60);
+  //Serial.println(stopsecondswd);  // used for debugging
+  if (nowseconds >= stopsecondswd) {
+    digitalWrite (RELAY_PIN_1, LOW); // OFF rele
+
+    if (nowseconds <= stopsecondswd + 90) { 
+      digitalWrite (RELAY_PIN_1, LOW); // rele OFF
+    }
+  }
+  else {
+    if (nowseconds >= startsecondswd) {
+      digitalWrite (RELAY_PIN_1, HIGH);
+     
+    }
+  }
+}
+BLYNK_WRITE(VPIN_BUTTON_11) {
+  TimeInputParam t(param);
+
+  nowseconds = ((hour() * 3600) + (minute() * 60) + second());
+  startsecondswd = (t.getStartHour() * 3600) + (t.getStartMinute() * 60);
+  //Serial.println(startsecondswd);  // used for debugging
+  if (nowseconds >= startsecondswd) {
+
+    if (nowseconds <= startsecondswd + 90) {  
+      digitalWrite (RELAY_PIN_2, HIGH);
+      
+    }
+  }
+
+  stopsecondswd = (t.getStopHour() * 3600) + (t.getStopMinute() * 60);
+  //Serial.println(stopsecondswd);  // used for debugging
+  if (nowseconds >= stopsecondswd) {
+    digitalWrite (RELAY_PIN_2, LOW); // OFF rele
+
+    if (nowseconds <= stopsecondswd + 90) { 
+      digitalWrite (RELAY_PIN_2, LOW); // rele OFF
+    }
+  }
+  else {
+    if (nowseconds >= startsecondswd) {
+      digitalWrite (RELAY_PIN_2, HIGH); 
+      
+    }
+  }
+}
+
+void setup()
+{
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.begin(115200);
+  DS18B20.begin();
+  Blynk.begin(AUTH, WIFI_SSID, WIFI_PASS, "blynk-cloud.com", 8442);
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Couldn't get a wifi connection");
+    delay(5000);
+   ESP.restart();
+    
+    while (true);
+  }
+  // if you are connected, print out info about the connection:
+  else {
+    // print the received signal strength:
+    long rssi = WiFi.RSSI();
+    Serial.print("RSSI:");
+    Serial.println(rssi);
+  }
+  rtc.begin();
+  pinMode(RELAY_PIN_1, OUTPUT);
+  digitalWrite(RELAY_PIN_1, relay1State);
+  pinMode(RELAY_PIN_2, OUTPUT);
+  digitalWrite(RELAY_PIN_2, relay2State);
+  pinMode(LED1, OUTPUT);
+  digitalWrite(LED1, HIGH);
+  delay(500);
+  digitalWrite(LED1, LOW);
+  delay(500);
+  digitalWrite(LED1, HIGH);
+  delay(500);
+  digitalWrite(LED1, LOW);
+  delay(500);
+  digitalWrite(LED1, HIGH);
+  delay(500);
+  digitalWrite(LED1, LOW);
+ 
+  timer.setInterval(3000L, checkBlynk);
+  
+  timer.setInterval(15000L, activetoday);
+  timer.setInterval(20000L, getSendData);
+}
+void getSendData()
+{
+  DS18B20.requestTemperatures(); 
+  temp = DS18B20.getTempCByIndex(0);
+  Serial.println(temp);
+  Blynk.virtualWrite(V6, temp); //virtual pin V10
+}
+
+
+void loop()
+{
+  Blynk.run();
+  timer.run();
+
+
+}
